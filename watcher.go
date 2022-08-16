@@ -30,25 +30,25 @@ type imgDetails struct {
 	TakenTime time.Time
 }
 
-func check(e error) {
+func check(p string, e error) {
 	if e != nil {
-		log.Fatal(e)
+		log.Printf("%v: %v", p, e)
 	}
 }
 
 func TakenTime(p string) time.Time {
 	img, err := os.Open(p)
 	defer img.Close()
-	check(err)
+	check(p, err)
 
 	x, err := exif.Decode(img)
-	check(err)
+	check(p, err)
 
 	dt, err := x.DateTime()
 	if err != nil {
 		// fall back to file modification time
 		t, err := os.Stat(p)
-		check(err)
+		check(p, err)
 		return t.ModTime()
 	}
 

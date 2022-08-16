@@ -17,6 +17,7 @@ import (
 
 	"github.com/nfnt/resize"
 	"github.com/oliamb/cutter"
+	"github.com/rwcarlsen/goexif/exif"
 )
 
 type imgDetails struct {
@@ -26,7 +27,32 @@ type imgDetails struct {
 	Caption   string
 	Path      string
 	ThumbPath string
-	ModTime   time.Time
+	TakenTime time.Time
+}
+
+func check(e error) {
+	if e != nil {
+		log.Fatal(e)
+	}
+}
+
+func TakenTime(p string) time.Time {
+	img, err := os.Open(p)
+	defer img.Close()
+	check(err)
+
+	x, err := exif.Decode(img)
+	check(err)
+
+	dt, err := x.DateTime()
+	if err != nil {
+		// fall back to file modification time
+		t, err := os.Stat(p)
+		check(err)
+		return t.ModTime()
+	}
+
+	return dt
 }
 
 type dirDetails struct {
@@ -108,11 +134,11 @@ func (a byImgName) Len() int           { return len(a) }
 func (a byImgName) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byImgName) Less(i, j int) bool { return a[i].Path < a[j].Path }
 
-type byImgModTime []*imgDetails
+type byImgTakenTime []*imgDetails
 
-func (a byImgModTime) Len() int           { return len(a) }
-func (a byImgModTime) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a byImgModTime) Less(i, j int) bool { return a[i].ModTime.Unix() > a[j].ModTime.Unix() }
+func (a byImgTakenTime) Len() int           { return len(a) }
+func (a byImgTakenTime) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byImgTakenTime) Less(i, j int) bool { return a[i].TakenTime.Unix() > a[j].TakenTime.Unix() }
 
 func (w *watcher) writeIndexes() {
 	tmpl := template.Must(template.New("dirIndex").Parse(dirIndexTempl))
@@ -127,8 +153,8 @@ func (w *watcher) writeIndexes() {
 			title = cfg.Title
 		}
 
-		if cfg, exists := w.configs[d]; exists && cfg.SortOrder == "ModTime" {
-			sort.Sort(byImgModTime(ids))
+		if cfg, exists := w.configs[d]; exists && cfg.SortOrder == "TakenTime" {
+			sort.Sort(byImgTakenTime(ids))
 		} else {
 			sort.Sort(byImgName(ids))
 		}
@@ -321,12 +347,13 @@ func (w *watcher) reloadContents() {
 					if cfgExists {
 						cptn = cfg.Captions[f.Name()]
 					}
+
 					details := &imgDetails{
-						Width:   img.Width,
-						Height:  img.Height,
-						Caption: cptn,
-						Path:    strings.Join([]string{"b", d.Name(), f.Name()}, "/"),
-						ModTime: f.ModTime(),
+						Width:     img.Width,
+						Height:    img.Height,
+						Caption:   cptn,
+						Path:      strings.Join([]string{"b", d.Name(), f.Name()}, "/"),
+						TakenTime: TakenTime(p),
 					}
 
 					if w.images == nil {
